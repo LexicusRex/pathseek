@@ -1,0 +1,119 @@
+/* @import "tailwindcss"; */
+
+#root {
+  /* max-width: 1280px; */
+  /* margin: 0 auto; */
+  /* padding: 2rem; */
+  text-align: center;
+  /* height: 100%; */
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+/* Button theme variables */
+:root {
+  --primary: #393939;
+  --primary-foreground: #ffffff;
+  --secondary: #d1d1d1;
+  --secondary-foreground: #1f2937;
+  --destructive: #ee5656;
+  --destructive-foreground: #ffffff;
+  --accent1: #ff8874;
+  --accent1-foreground: #1f2937;
+  --accent2: #2563eb;
+  --accent2-foreground: #ffffff;
+  --ring: rgba(59, 130, 246, 0.5);
+  --input: #d1d5db;
+  --background: #ffffff;
+}
+  
+/* 
+.bg-primary {
+  background-color: var(--primary);
+}
+
+.text-primary-foreground {
+  color: var(--primary-foreground);
+}
+.bg-primary\/90 {
+  background-color: rgba(57, 57, 57, 0.5);
+} 
+
+.bg-secondary {
+  background-color: var(--secondary);
+}
+
+.text-secondary-foreground {
+  color: var(--secondary-foreground);
+}
+
+.bg-secondary\/80 {
+  background-color: rgba(243, 244, 246, 0.8);
+}
+
+.bg-destructive {
+  background-color: var(--destructive);
+}
+
+.text-destructive-foreground {
+  color: var(--destructive-foreground);
+}
+
+.bg-destructive\/90 {
+  background-color: rgba(239, 68, 68, 0.9);
+}
+
+.bg-accent {
+  background-color: var(--accent);
+}
+
+.text-accent-foreground {
+  color: var(--accent-foreground);
+}
+
+.border-input {
+  border-color: var(--input);
+}
+
+.bg-background {
+  background-color: var(--background);
+}
+
+.focus-visible\:ring-ring:focus-visible {
+  --tw-ring-color: var(--ring);
+}
+  */
