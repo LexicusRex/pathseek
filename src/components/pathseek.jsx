@@ -443,16 +443,26 @@ const PathSeeker = () => {
     
     // Draw edge being created
     if (creatingEdge && edgeStart) {
+      // Get up-to-date rect in each render
       const rect = canvasRef.current.getBoundingClientRect();
-      const mouseX = mousePos.x - rect.left + canvasOffset.x;
-      const mouseY = mousePos.y - rect.top + canvasOffset.y;
       
+      // Convert screen coordinates to canvas coordinates, accounting for zoom
+      const mouseCanvasX = (mousePos.x - rect.left) / zoomLevel + canvasOffset.x / zoomLevel;
+      const mouseCanvasY = (mousePos.y - rect.top) / zoomLevel + canvasOffset.y / zoomLevel;
+      
+      // Draw the line
       ctx.beginPath();
       ctx.moveTo(edgeStart.x, edgeStart.y);
-      ctx.lineTo(mouseX, mouseY);
+      ctx.lineTo(mouseCanvasX, mouseCanvasY);
       ctx.strokeStyle = '#007bff';
       ctx.lineWidth = 2;
       ctx.stroke();
+      
+      // For debugging - mark the calculated endpoint with a circle
+      ctx.beginPath();
+      ctx.arc(mouseCanvasX, mouseCanvasY, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff8874';
+      ctx.fill();
     }
     
     // Draw path selection line
@@ -598,13 +608,17 @@ const PathSeeker = () => {
     e.preventDefault(); // Prevent default context menu
   
     const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left + canvasOffset.x;
-    const y = e.clientY - rect.top + canvasOffset.y;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Calculate the actual position in the canvas coordinate system
+    const canvasX = x / zoomLevel + canvasOffset.x / zoomLevel;
+    const canvasY = y / zoomLevel + canvasOffset.y / zoomLevel;
     
     // Check if right-clicking on a node
-    const clickedNode = findNodeAtPosition(x, y);
+    const clickedNode = findNodeAtPosition(canvasX, canvasY);
     // First check if right-clicking on an edge
-    const clickedEdge = findEdgeAtPosition(x, y);
+    const clickedEdge = findEdgeAtPosition(canvasX, canvasY);
     
     if (clickedNode) {
       // Start edge creation from this node
@@ -1282,7 +1296,7 @@ const PathSeeker = () => {
       setHistory([JSON.stringify(graph)]);
       setHistoryIndex(0);
     }
-  }, []);
+  }, [graph, history.length]);
   
   // Track graph changes and update history
   useEffect(() => {
@@ -1312,7 +1326,7 @@ const PathSeeker = () => {
       setHistory(newHistory.slice(newHistory.length - 50));
       setHistoryIndex(49); // Adjust the index accordingly
     }
-  }, [graph]);
+  }, [graph, history, historyIndex, isUndoRedo]);
   
   // Undo function
   const handleUndo = useCallback(() => {
