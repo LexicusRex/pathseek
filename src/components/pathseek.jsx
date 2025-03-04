@@ -132,6 +132,12 @@ const PathSeeker = () => {
   
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
+
+  const [selectedNodes, setSelectedNodes] = useState(new Set());
+  const [selectionBox, setSelectionBox] = useState(null);
+  const [isMultiSelecting, setIsMultiSelecting] = useState(false);
+  const [selectionStart, setSelectionStart] = useState({ x: 0, y: 0 });
+
   
   // Load from localStorage on initial render
   useEffect(() => {
@@ -249,6 +255,19 @@ const PathSeeker = () => {
     //   setStartPanOffset({ ...canvasOffset });
     //   return;
     // }
+  
+    // Check if shift key is pressed for multi-selection
+    if (e.shiftKey) {
+      setIsMultiSelecting(true);
+      setSelectionStart({ x: canvasX, y: canvasY });
+      setSelectionBox({
+        startX: canvasX,
+        startY: canvasY,
+        width: 0,
+        height: 0
+      });
+      return;
+    }
     
     // Check if clicking on a node
     const clickedNode = findNodeAtPosition(canvasX, canvasY);
@@ -256,7 +275,7 @@ const PathSeeker = () => {
     if (clickedNode) {
       // Handle node selection/dragging
       if (selectingPath) {
-        // We're in path selection mode and clicked a second node
+        // Path selection code remains the same
         if (pathSource && pathSource.id !== clickedNode.id) {
           // Find path between source and target nodes
           const path = findPath(pathSource.id, clickedNode.id);
@@ -281,9 +300,28 @@ const PathSeeker = () => {
           setEdgeStart(null);
         }
       } else {
+        // Check if this node is already in the selection
+        const isAlreadySelected = selectedNodes.has(clickedNode.id);
+        
+        // If Ctrl key is pressed, toggle this node in the selection
+        if (e.ctrlKey) {
+          const newSelectedNodes = new Set(selectedNodes);
+          if (isAlreadySelected) {
+            newSelectedNodes.delete(clickedNode.id);
+          } else {
+            newSelectedNodes.add(clickedNode.id);
+          }
+          setSelectedNodes(newSelectedNodes);
+        } 
+        // If not Ctrl key and the node isn't already selected, select just this node
+        else if (!isAlreadySelected) {
+          setSelectedNodes(new Set([clickedNode.id]));
+        }
+        
         setSelectedNode(clickedNode);
         setSelectedEdge(null); // Deselect edge when selecting a node
         setDraggedNode(clickedNode);
+        
         // Store the offset in screen pixels - we'll convert in handleMouseMove
         setDragOffset({
           x: canvasX - clickedNode.x,
@@ -297,10 +335,16 @@ const PathSeeker = () => {
       if (clickedEdge) {
         setSelectedEdge(clickedEdge);
         setSelectedNode(null);
+        // Clear multi-selection when selecting an edge
+        setSelectedNodes(new Set());
       } else {
         // Clicked on empty canvas
         setSelectedNode(null);
         setSelectedEdge(null);
+        // Clear multi-selection when clicking empty canvas (unless using Shift for multi-select)
+        if (!e.shiftKey) {
+          setSelectedNodes(new Set());
+        }
         
         // Cancel any active modes
         if (creatingEdge) {
@@ -313,7 +357,7 @@ const PathSeeker = () => {
           setPathSource(null);
         }
       }
-
+  
       // If a node isn't clicked and after all edge stuff is resolved, it's panning time!
       setIsPanning(true);
       setStartPanPoint({ x: e.clientX, y: e.clientY });
@@ -358,6 +402,124 @@ const PathSeeker = () => {
   }, [zoomLevel, canvasOffset, minZoom, maxZoom, zoomStep]);
   
   const renderCanvas = useCallback((ctx, width, height) => {
+      // Drawing functions (keep existing)
+    const drawNode = (ctx, node, isHighlighted, isSelected) => {
+      // Node dimensions
+      const width = 200;
+      const height = 75;
+      const cornerRadius = 10;
+      
+      // Text padding
+      const horizontalPadding = 12; // Horizontal padding (left and right)
+      const verticalPadding = 10;   // Vertical padding (top and bottom)
+      
+      // Calculate the top-left corner of the rectangle
+      const x = node.x - width / 2;
+      const y = node.y - height / 2;
+      
+      // Draw rounded rectangle
+      ctx.beginPath();
+      ctx.moveTo(x + cornerRadius, y);
+      ctx.lineTo(x + width - cornerRadius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + cornerRadius);
+      ctx.lineTo(x + width, y + height - cornerRadius);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - cornerRadius, y + height);
+      ctx.lineTo(x + cornerRadius, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - cornerRadius);
+      ctx.lineTo(x, y + cornerRadius);
+      ctx.quadraticCurveTo(x, y, x + cornerRadius, y);
+      ctx.closePath();
+      
+      // Fill with color
+      if (isHighlighted) {
+        ctx.fillStyle = '#ff8874'; // Orange for highlighted path
+      } else {
+        ctx.fillStyle = '#f9fafb'; // Light gray
+      }
+      
+      ctx.fill();
+      
+      // Stroke (outline)
+      const isMultiSelected = selectedNodes.has(node.id);
+    
+      if (isSelected || isMultiSelected) {
+        ctx.strokeStyle = '#2563eb'; // Blue for selected
+        ctx.lineWidth = 3;
+      } else {
+        ctx.strokeStyle = '#656262'; // Gray
+        ctx.lineWidth = 2;
+      }
+      
+      ctx.stroke();
+      
+      // Node text
+      ctx.font = '16px Arial';
+      ctx.fillStyle = '#111827';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      
+      // Text wrapping and truncation - apply padding to maxWidth
+      const maxWidth = width - (horizontalPadding * 2); // Apply horizontal padding
+      const maxLines = 2;  // Reduce to 2 lines if needed for better vertical padding
+      const lineHeight = 16;
+      
+      const words = node.text.split(' ');
+      const lines = [];
+      let currentLine = words[0] || '';
+      
+      // Create wrapped lines based on width
+      for (let i = 1; i < words.length; i++) {
+        const testLine = currentLine + ' ' + words[i];
+        const metrics = ctx.measureText(testLine);
+        const testWidth = metrics.width;
+        
+        if (testWidth > maxWidth) {
+          lines.push(currentLine);
+          currentLine = words[i];
+        } else {
+          currentLine = testLine;
+        }
+      }
+      
+      if (currentLine) {
+        lines.push(currentLine);
+      }
+      
+      // Limit the number of lines and add ellipsis if truncated
+      const displayLines = lines.slice(0, maxLines);
+      if (lines.length > maxLines) {
+        let lastLine = displayLines[maxLines - 1];
+        
+        // Add ellipsis by truncating the last visible line if needed
+        while (ctx.measureText(lastLine + '...').width > maxWidth) {
+          lastLine = lastLine.slice(0, -1);
+          if (lastLine.length <= 3) break;
+        }
+        displayLines[maxLines - 1] = lastLine + '...';
+      }
+      
+      // Calculate vertical alignment for text block with vertical padding
+      const totalTextHeight = displayLines.length * lineHeight;
+      let startY = node.y - (totalTextHeight / 2) + (lineHeight / 2);
+      
+      // Ensure text stays within the vertical padding
+      const topBoundary = y + verticalPadding;
+      const bottomBoundary = y + height - verticalPadding;
+      
+      // Adjust startY if it would cause text to exceed padding
+      if (startY - (lineHeight / 2) < topBoundary) {
+        startY = topBoundary + (lineHeight / 2);
+      } else if (startY + totalTextHeight - (lineHeight / 2) > bottomBoundary) {
+        startY = bottomBoundary - totalTextHeight + (lineHeight / 2);
+      }
+      
+      // Draw each line
+      displayLines.forEach((line, i) => {
+        ctx.fillText(line, node.x, startY + (i * lineHeight));
+      });
+    };
+  
+    
     if (!ctx) return;
     
     // Clear canvas
@@ -464,6 +626,26 @@ const PathSeeker = () => {
       ctx.fillStyle = '#ff8874';
       ctx.fill();
     }
+
+    // Draw selection box if active
+    if (selectionBox) {
+      ctx.fillStyle = 'rgba(65, 105, 225, 0.2)'; // Semi-transparent blue
+      ctx.fillRect(
+        selectionBox.startX,
+        selectionBox.startY,
+        selectionBox.width,
+        selectionBox.height
+      );
+      
+      ctx.strokeStyle = 'rgb(65, 105, 225)';
+      ctx.lineWidth = 1.5 / zoomLevel;
+      ctx.strokeRect(
+        selectionBox.startX,
+        selectionBox.startY,
+        selectionBox.width,
+        selectionBox.height
+      );
+    }
     
     // Draw path selection line
     if (selectingPath && pathSource) {
@@ -499,7 +681,7 @@ const PathSeeker = () => {
     
     // Reset transformation
     ctx.restore();
-  }, [zoomLevel, canvasOffset.x, canvasOffset.y, graph, creatingEdge, edgeStart, selectingPath, pathSource, highlightedPath, selectedEdge, mousePos.x, mousePos.y, selectedNode]);
+  }, [zoomLevel, canvasOffset.x, canvasOffset.y, graph, creatingEdge, edgeStart, selectionBox, selectingPath, pathSource, selectedNodes, highlightedPath, selectedEdge, mousePos.x, mousePos.y, selectedNode]);
   
 
   // Keep a ref for animation frame ID for cleanup
@@ -528,10 +710,7 @@ const PathSeeker = () => {
       }
       return;
     }
-    
-    // If not dragging a node, just return
-    if (!draggedNode) return;
-    
+  
     // Get the canvas rect for coordinate conversion
     const rect = canvasRef.current.getBoundingClientRect();
     
@@ -539,15 +718,47 @@ const PathSeeker = () => {
     const mouseX = (e.clientX - rect.left) / zoomLevel;
     const mouseY = (e.clientY - rect.top) / zoomLevel;
     
+    // Convert to canvas coordinates
+    const canvasX = mouseX + canvasOffset.x / zoomLevel;
+    const canvasY = mouseY + canvasOffset.y / zoomLevel;
+    
+    // Handle selection box
+    if (isMultiSelecting) {
+      setSelectionBox({
+        startX: Math.min(selectionStart.x, canvasX),
+        startY: Math.min(selectionStart.y, canvasY),
+        width: Math.abs(canvasX - selectionStart.x),
+        height: Math.abs(canvasY - selectionStart.y)
+      });
+      return;
+    }
+    
+    // If not dragging a node, just return
+    if (!draggedNode) return;
+    
     // Calculate the new node position, accounting for the drag offset
     // and canvas offset (divided by zoom level to convert to canvas coordinates)
     const nodeX = mouseX + canvasOffset.x / zoomLevel - dragOffset.x / zoomLevel;
     const nodeY = mouseY + canvasOffset.y / zoomLevel - dragOffset.y / zoomLevel;
     
-    // Update node directly without triggering state update
+    // Calculate the movement delta
+    const deltaX = nodeX - draggedNode.x;
+    const deltaY = nodeY - draggedNode.y;
+  
+    // Update dragged node position
     if (graph.nodes[draggedNode.id]) {
       graph.nodes[draggedNode.id].x = nodeX;
       graph.nodes[draggedNode.id].y = nodeY;
+      
+      // Move all other selected nodes by the same delta
+      if (selectedNodes.size > 1) {
+        selectedNodes.forEach(id => {
+          if (id !== draggedNode.id && graph.nodes[id]) {
+            graph.nodes[id].x += deltaX;
+            graph.nodes[id].y += deltaY;
+          }
+        });
+      }
       
       // Force a canvas redraw without state update
       if (canvasRef.current) {
@@ -567,6 +778,34 @@ const PathSeeker = () => {
         Object.assign(newGraph, prevGraph);
         return newGraph;
       });
+    }
+    
+    // Handle finishing a selection box
+    if (isMultiSelecting && selectionBox) {
+      // Find all nodes within the selection box
+      const nodesInSelection = graph.getAllNodes().filter(node => {
+        return node.x >= selectionBox.startX && 
+               node.x <= selectionBox.startX + selectionBox.width &&
+               node.y >= selectionBox.startY && 
+               node.y <= selectionBox.startY + selectionBox.height;
+      });
+      
+      // Create a new set of selected node IDs
+      const newSelectedNodes = new Set(
+        nodesInSelection.map(node => node.id)
+      );
+      
+      setSelectedNodes(newSelectedNodes);
+      
+      // If at least one node is selected, set the first as the active node
+      if (nodesInSelection.length > 0) {
+        setSelectedNode(nodesInSelection[0]);
+        setSelectedEdge(null);
+      }
+      
+      // Clear selection box
+      setSelectionBox(null);
+      setIsMultiSelecting(false);
     }
     
     // Clean up panning animation frame if it exists
@@ -692,20 +931,31 @@ const PathSeeker = () => {
   };
   
   const deleteNode = () => {
-    if (!selectedNode) return;
-    
-    setGraph(prevGraph => {
-      const newGraph = new Graph();
-      Object.assign(newGraph, prevGraph);
-      newGraph.removeNode(selectedNode.id);
-      return newGraph;
-    });
-    
-    setSelectedNode(null);
-    
-    // Reset highlight if it included this node
-    if (highlightedPath.includes(selectedNode.id)) {
-      setHighlightedPath([]);
+    if (selectedNodes.size > 0) {
+      setGraph(prevGraph => {
+        const newGraph = new Graph();
+        Object.assign(newGraph, prevGraph);
+        
+        // Delete all selected nodes
+        selectedNodes.forEach(id => {
+          newGraph.removeNode(id);
+        });
+        
+        return newGraph;
+      });
+      
+      // Reset selection states
+      setSelectedNode(null);
+      setSelectedNodes(new Set());
+      
+      // Reset highlight if it included any selected node
+      const shouldResetHighlight = [...selectedNodes].some(id => 
+        highlightedPath.includes(id)
+      );
+      
+      if (shouldResetHighlight) {
+        setHighlightedPath([]);
+      }
     }
   };
   
@@ -1018,121 +1268,7 @@ const PathSeeker = () => {
     };
   }, [renderCanvas, handleWheel]);
   
-  // Drawing functions (keep existing)
-  const drawNode = (ctx, node, isHighlighted, isSelected) => {
-    // Node dimensions
-    const width = 200;
-    const height = 75;
-    const cornerRadius = 10;
-    
-    // Text padding
-    const horizontalPadding = 12; // Horizontal padding (left and right)
-    const verticalPadding = 10;   // Vertical padding (top and bottom)
-    
-    // Calculate the top-left corner of the rectangle
-    const x = node.x - width / 2;
-    const y = node.y - height / 2;
-    
-    // Draw rounded rectangle
-    ctx.beginPath();
-    ctx.moveTo(x + cornerRadius, y);
-    ctx.lineTo(x + width - cornerRadius, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + cornerRadius);
-    ctx.lineTo(x + width, y + height - cornerRadius);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - cornerRadius, y + height);
-    ctx.lineTo(x + cornerRadius, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - cornerRadius);
-    ctx.lineTo(x, y + cornerRadius);
-    ctx.quadraticCurveTo(x, y, x + cornerRadius, y);
-    ctx.closePath();
-    
-    // Fill with color
-    if (isHighlighted) {
-      ctx.fillStyle = '#ff8874'; // Orange for highlighted path
-    } else {
-      ctx.fillStyle = '#f9fafb'; // Light gray
-    }
-    
-    ctx.fill();
-    
-    // Stroke (outline)
-    if (isSelected) {
-      ctx.strokeStyle = '#2563eb'; // Blue for selected
-      ctx.lineWidth = 3;
-    } else {
-      ctx.strokeStyle = '#656262'; // Gray
-      ctx.lineWidth = 2;
-    }
-    
-    ctx.stroke();
-    
-    // Node text
-    ctx.font = '16px Arial';
-    ctx.fillStyle = '#111827';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    
-    // Text wrapping and truncation - apply padding to maxWidth
-    const maxWidth = width - (horizontalPadding * 2); // Apply horizontal padding
-    const maxLines = 2;  // Reduce to 2 lines if needed for better vertical padding
-    const lineHeight = 16;
-    
-    const words = node.text.split(' ');
-    const lines = [];
-    let currentLine = words[0] || '';
-    
-    // Create wrapped lines based on width
-    for (let i = 1; i < words.length; i++) {
-      const testLine = currentLine + ' ' + words[i];
-      const metrics = ctx.measureText(testLine);
-      const testWidth = metrics.width;
-      
-      if (testWidth > maxWidth) {
-        lines.push(currentLine);
-        currentLine = words[i];
-      } else {
-        currentLine = testLine;
-      }
-    }
-    
-    if (currentLine) {
-      lines.push(currentLine);
-    }
-    
-    // Limit the number of lines and add ellipsis if truncated
-    const displayLines = lines.slice(0, maxLines);
-    if (lines.length > maxLines) {
-      let lastLine = displayLines[maxLines - 1];
-      
-      // Add ellipsis by truncating the last visible line if needed
-      while (ctx.measureText(lastLine + '...').width > maxWidth) {
-        lastLine = lastLine.slice(0, -1);
-        if (lastLine.length <= 3) break;
-      }
-      displayLines[maxLines - 1] = lastLine + '...';
-    }
-    
-    // Calculate vertical alignment for text block with vertical padding
-    const totalTextHeight = displayLines.length * lineHeight;
-    let startY = node.y - (totalTextHeight / 2) + (lineHeight / 2);
-    
-    // Ensure text stays within the vertical padding
-    const topBoundary = y + verticalPadding;
-    const bottomBoundary = y + height - verticalPadding;
-    
-    // Adjust startY if it would cause text to exceed padding
-    if (startY - (lineHeight / 2) < topBoundary) {
-      startY = topBoundary + (lineHeight / 2);
-    } else if (startY + totalTextHeight - (lineHeight / 2) > bottomBoundary) {
-      startY = bottomBoundary - totalTextHeight + (lineHeight / 2);
-    }
-    
-    // Draw each line
-    displayLines.forEach((line, i) => {
-      ctx.fillText(line, node.x, startY + (i * lineHeight));
-    });
-  };
- 
+
   const drawEdge = (ctx, source, target, isHighlighted, isSelected = false) => {
     // Node dimensions
     const nodeWidth = 200;
